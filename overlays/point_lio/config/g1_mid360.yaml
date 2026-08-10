@@ -1,0 +1,70 @@
+/**:
+    ros__parameters:
+        common:
+            lid_topic: "/utlidar/cloud_livox_mid360"
+            imu_topic: "/utlidar/imu_livox_mid360"
+            con_frame: false # true: if you need to combine several LiDAR frames into one
+            con_frame_num: 1 # the number of frames combined
+            cut_frame: false # true: if you need to cut one LiDAR frame into several subframes
+            cut_frame_time_interval: 0.1 # should be integral fraction of 1 / LiDAR frequency
+            time_lag_imu_to_lidar: 0.0 # Time offset between LiDAR and IMU calibrated by other algorithms, e.g., LI-Init (find in Readme),
+            # the timestamp of IMU is transferred from the current timeline to LiDAR's timeline by subtracting this value
+
+        preprocess:
+            # 5 = UNILIDAR, not 1 = AVIA -- the PointCloud2 handler for lidar_type 1
+            # is commented out upstream (it's only wired to livox_ros_driver2's
+            # CustomMsg, which we don't use). UNILIDAR's point struct
+            # ({float x,y,z,intensity; uint16 ring; float time}) is a byte-for-byte
+            # match for our G1 Mid-360's own PointCloud2 layout (point_step=22,
+            # confirmed against a real capture), so it works unmodified.
+            lidar_type: 5
+            scan_line: 4      # confirmed: ring values 0-3 across 50 real frames
+            timestamp_unit: 3 # nanosecond -- confirmed against a real capture (per-point time field, e.g. 5000..104160000 over a ~0.1s scan)
+            blind: 0.5
+
+        mapping:
+            imu_en: true
+            start_in_aggressive_motion: false # if true, a preknown gravity should be provided in following gravity_init
+            extrinsic_est_en: false # for aggressive motion, set this variable false
+            imu_time_inte: 0.005 # = 1 / frequency of IMU
+            satu_acc: 3.0 # the saturation value of IMU's acceleration. not related to the units
+            satu_gyro: 35.0 # the saturation value of IMU's angular velocity. not related to the units
+            acc_norm: 1.0 # 1.0 for g as unit, 9.81 for m/s^2 as unit of the IMU's acceleration -- our IMU reports in g's (~1.0 at rest), see rl/g1_locomotion_policy.py's log_lidar_imu docstring
+            lidar_meas_cov: 0.01 # 0.001
+            acc_cov_output: 500.0
+            gyr_cov_output: 1000.0
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            imu_meas_acc_cov: 0.01 #0.1 # 2
+            imu_meas_omg_cov: 0.01 #0.1 # 2
+            gyr_cov_input: 0.01 # for IMU as input model
+            acc_cov_input: 0.1 # for IMU as input model
+            plane_thr: 0.1 # 0.05, the threshold for plane criteria, the smaller, the flatter a plane
+            match_s: 81.0
+            fov_degree: 360.0
+            det_range: 100.0
+            gravity_align: true # true to align the z axis of world frame with the direction of gravity, and the gravity direction should be specified below
+            gravity: [ 0.0, 0.0, -9.810 ]
+            gravity_init: [ 0.0, 0.0, -9.810 ]
+            # LiDAR and IMU are the same physical unit (Mid-360's onboard IMU) --
+            # treated as co-located/aligned, same assumption viz.py's log_lidar_imu
+            # makes drawing both under the same livox_frame entity with no extra
+            # rotation. Zero translation, identity rotation, not the upstream
+            # mid360.yaml's own rig-specific values.
+            extrinsic_T: [ 0.0, 0.0, 0.0 ]
+            extrinsic_R: [ 1.0, 0.0, 0.0,
+                           0.0, 1.0, 0.0,
+                           0.0, 0.0, 1.0 ]
+
+        odometry:
+            publish_odometry_without_downsample: false
+
+        publish:
+            path_en: true                 # false: close the path output
+            scan_publish_en: true         # false: close all the point cloud output
+            scan_bodyframe_pub_en: false  # true: output the point cloud scans in IMU-body-frame
+
+        pcd_save:
+            pcd_save_en: false
+            interval: -1                 # how many LiDAR frames saved in each pcd file;
+            # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.

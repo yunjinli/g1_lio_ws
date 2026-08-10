@@ -1,0 +1,67 @@
+/**:
+  ros__parameters:
+    # NOTE: common.lid_topic/imu_topic below are NOT read by this node --
+    # checked spark_fast_lio.cpp directly: it subscribes to fixed relative
+    # names "lidar"/"imu" (create_subscription<...>("lidar", ...) /
+    # ("imu", ...)), same as every other config here that ships a
+    # commented-or-unused common.lid_topic. Point it at real topics via
+    # ROS2 remap instead -- see launch/mapping_g1_mid360.launch.py.
+    common:
+      time_sync_en: false
+
+    preprocess:
+      # 2 = VELO16, not 1 = AVIA -- the PointCloud2 handler for lidar_type 1
+      # is commented/unreachable upstream (AVIA only has a livox_ros_driver
+      # CustomMsg handler, which we don't use -- "Missing livox driver! AVIA
+      # Lidar will be disabled!" at configure time confirms it's compiled
+      # out). VELO16's point struct ({float x,y,z,intensity,time; uint16
+      # ring}) is a byte-for-byte match for our G1 Mid-360's own PointCloud2
+      # layout (point_step=22, confirmed against a real capture), and since
+      # our data always carries real per-point time (given_offset_time=true
+      # at runtime), velodyne_handler's yaw-angle-based fake-timing fallback
+      # never triggers -- it just uses the real per-point times directly.
+      lidar_type: 2
+      scan_line: 4      # confirmed: ring values 0-3 across 50 real frames
+      scan_rate: 10     # Mid-360 publishes at ~9.5Hz; unused anyway since given_offset_time=true
+      timestamp_unit: 3 # nanosecond -- confirmed against a real capture (per-point time field, e.g. 5000..104160000 over a ~0.1s scan)
+      blind: 0.5
+      blind_for_human_pilot: 1.0
+
+    mapping:
+      acc_cov: 0.1
+      gyr_cov: 0.1
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+      fov_degree: 360.0
+      det_range: 100.0
+      extrinsic_est_en: false
+      # LiDAR and IMU are the same physical unit (Mid-360's onboard IMU) --
+      # treated as co-located/aligned, same assumption viz.py's log_lidar_imu
+      # makes drawing both under the same livox_frame entity with no extra
+      # rotation. Zero translation, identity rotation, not the upstream
+      # velodyne_mit.yaml's own rig-specific values.
+      extrinsic_T: [ 0.0, 0.0, 0.0 ]
+      extrinsic_R: [ 1.0, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0 ]
+
+    filter_size_map: 0.3
+
+    publish:
+      path_en: true
+      scan_publish_en: true
+      dense_publish_en: true
+      scan_lidarframe_pub_en: true
+      scan_bodyframe_pub_en: true
+      scan_baseframe_pub_en: false
+
+    pcd_save:
+      pcd_save_en: false
+      interval: -1
+
+    verbose: true
+    runtime_pos_log_enable: false
+    point_filter_num_for_preprocessing: 1
+    point_filter_num: 4
+    max_iteration: 4
+    cube_side_length: 1000.0
