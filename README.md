@@ -124,6 +124,17 @@ Terminal 2, both LIOs and RViz:
 ros2 launch "$PWD/launch/lio_vicon_view.launch.py"
 ```
 
+This defaults to `lio:=all` and opens RViz with the Vicon trajectory/frame,
+both LIO trajectories/frames, and both intensity-colored maps. Select one LIO
+while keeping the same Vicon comparison and RViz view with:
+
+```bash
+ros2 launch "$PWD/launch/lio_vicon_view.launch.py" lio:=point-lio
+ros2 launch "$PWD/launch/lio_vicon_view.launch.py" lio:=fast-lio
+```
+
+Use `start_viewer:=false` for a headless run.
+
 The view contains:
 
 - Vicon-derived LiDAR trajectory (green).

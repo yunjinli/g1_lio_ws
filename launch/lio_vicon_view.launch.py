@@ -1,4 +1,4 @@
-"""Launch both LIOs, live Vicon-aligned paths, and RViz."""
+"""Launch selected LIO methods, live Vicon-aligned paths, and RViz."""
 
 import os
 
@@ -7,7 +7,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource, PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import SetRemap
 
 
@@ -27,18 +27,28 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("start_viewer", default_value="true", description="Start comparison RViz"),
         DeclareLaunchArgument(
+            "lio",
+            default_value="all",
+            choices=["all", "point-lio", "fast-lio"],
+            description="LIO method to start",
+        ),
+        DeclareLaunchArgument(
             "save_dir",
-            default_value=os.path.expanduser("~/git_repo/lio_ws/results/maps"),
+            default_value=os.path.join(REPO_ROOT, "results", "maps"),
             description="Directory for final world-frame PCD maps written on shutdown",
         ),
-        GroupAction(actions=[
+        GroupAction(condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration("lio"), "' in ('all', 'point-lio')"
+        ])), actions=[
             SetRemap(src="/cloud_registered", dst="/point_lio/cloud_registered"),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(point_launch),
                 launch_arguments={"rviz": "false"}.items(),
             ),
         ]),
-        GroupAction(actions=[
+        GroupAction(condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration("lio"), "' in ('all', 'fast-lio')"
+        ])), actions=[
             SetRemap(src="/cloud_registered", dst="/spark_fast_lio/cloud_registered"),
             IncludeLaunchDescription(
                 AnyLaunchDescriptionSource(spark_launch),
