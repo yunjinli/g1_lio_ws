@@ -1,0 +1,38 @@
+---
+launch:
+  - arg: {name: start_rviz, default: 'false', description: automatically start rviz}
+
+  - arg: {name: config_path, default: $(find-pkg-share spark_fast_lio)/config/g1_mid360.yaml, description: Model-specific configuration}
+
+  - node:
+      pkg: spark_fast_lio
+      exec: spark_lio_mapping
+      name: lio_mapping
+      output: screen
+      on_exit: shutdown
+
+      # spark_fast_lio.cpp subscribes to fixed relative names "lidar"/"imu"
+      # (common.lid_topic/imu_topic in the yaml are unused) -- this is the
+      # actual way to point it at our G1's own topics, produced by
+      # jsonl_to_rosbag2.py from a tools/dds_recorder.py capture.
+      remap:
+        - { from: 'lidar', to: '/utlidar/cloud_livox_mid360' }
+        - { from: 'imu',   to: '/utlidar/imu_livox_mid360'   }
+
+      param:
+        - name: "common.lidar_frame"
+          value: "livox_frame"
+        - name: "common.imu_frame"
+          value: "livox_frame"
+        - name: "gravity_alignment.enable_gravity_alignment"
+          value: false
+
+        - from: $(var config_path)
+
+  - node:
+      if: $(var start_rviz)
+      pkg: rviz2
+      exec: rviz2
+      name: "rviz"
+      launch-prefix: "nice"
+      output: "screen"

@@ -34,6 +34,13 @@ CMakeLists.txt.user
 
 srv/_*.py
 *.pcd
+install/
+log/
+.venv/
+results/*
+!results/.gitkeep
+__pycache__/
+*.npz
 *.pyc
 qtcreator-*
 *.user

@@ -1,0 +1,9 @@
+[submodule "src/point_lio_ros2"]
+	path = src/point_lio_ros2
+	url = https://github.com/dfloreaa/point_lio_ros2.git
+[submodule "src/spark-fast-lio"]
+	path = src/spark-fast-lio
+	url = https://github.com/MIT-SPARK/spark-fast-lio.git
+[submodule "vendor/unitree_sdk2_python"]
+	path = vendor/unitree_sdk2_python
+	url = https://github.com/unitreerobotics/unitree_sdk2_python.git
