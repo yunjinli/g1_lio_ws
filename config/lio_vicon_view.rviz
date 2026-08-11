@@ -62,6 +62,26 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /viz/spark_fast_lio_path
     - Alpha: 1
+      Class: rviz_default_plugins/RobotModel
+      Collision Enabled: false
+      Description Source: Topic
+      Description Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Enabled: true
+      Links:
+        All Links Enabled: true
+      Mass Properties:
+        Inertia: false
+        Mass: false
+      Name: G1 joint-state model
+      TF Prefix: ""
+      Update Interval: 0
+      Visual Enabled: true
+    - Alpha: 1
       Axes Length: 0.35
       Axes Radius: 0.025
       Class: rviz_default_plugins/Pose

@@ -11,6 +11,7 @@ import argparse
 import math
 import os
 import sys
+import xml.etree.ElementTree as ET
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
@@ -76,6 +77,18 @@ def _axis_angle(axis, angle):
     return _normalize((axis[0] * scale, axis[1] * scale, axis[2] * scale, math.cos(half)))
 
 
+def _rpy_quaternion(rpy):
+    """URDF fixed-axis roll, pitch, yaw as an xyzw quaternion."""
+    roll, pitch, yaw = rpy
+    return _multiply(
+        _axis_angle((0.0, 0.0, 1.0), yaw),
+        _multiply(
+            _axis_angle((0.0, 1.0, 0.0), pitch),
+            _axis_angle((1.0, 0.0, 0.0), roll),
+        ),
+    )
+
+
 def _compose(p_parent, q_parent, translation, rotation):
     rotated = _rotate(q_parent, translation)
     return (
@@ -84,8 +97,51 @@ def _compose(p_parent, q_parent, translation, rotation):
     )
 
 
+class UrdfChain:
+    """Minimal URDF FK for one chain, with all geometry sourced from XML."""
+
+    def __init__(self, path, base_link="pelvis", tip_link="mid360_link"):
+        child_joints = {}
+        for joint in ET.parse(path).getroot().findall("joint"):
+            origin = joint.find("origin")
+            axis = joint.find("axis")
+            child_joints[joint.find("child").get("link")] = {
+                "name": joint.get("name"),
+                "type": joint.get("type", "fixed"),
+                "parent": joint.find("parent").get("link"),
+                "xyz": self._vector(origin.get("xyz") if origin is not None else None, (0.0, 0.0, 0.0)),
+                "rpy": self._vector(origin.get("rpy") if origin is not None else None, (0.0, 0.0, 0.0)),
+                "axis": self._vector(axis.get("xyz") if axis is not None else None, (1.0, 0.0, 0.0)),
+            }
+
+        reversed_chain = []
+        link = tip_link
+        while link != base_link:
+            if link not in child_joints:
+                raise ValueError(f"URDF has no chain from {base_link!r} to {tip_link!r}")
+            joint = child_joints[link]
+            reversed_chain.append(joint)
+            link = joint["parent"]
+        self.joints = tuple(reversed(reversed_chain))
+
+    @staticmethod
+    def _vector(text, default):
+        return tuple(map(float, text.split())) if text else default
+
+    def apply(self, position, orientation, positions):
+        p, q = position, orientation
+        for joint in self.joints:
+            p, q = _compose(p, q, joint["xyz"], _rpy_quaternion(joint["rpy"]))
+            value = positions.get(joint["name"], positions.get(joint["name"].removesuffix("_joint"), 0.0))
+            if joint["type"] in ("revolute", "continuous"):
+                p, q = _compose(p, q, (0.0, 0.0, 0.0), _axis_angle(joint["axis"], value))
+            elif joint["type"] == "prismatic":
+                p, q = _compose(p, q, tuple(value * component for component in joint["axis"]), (0.0, 0.0, 0.0, 1.0))
+        return p, q
+
+
 class TrajectoryViewer(Node):
-    def __init__(self, max_poses, save_dir):
+    def __init__(self, max_poses, save_dir, urdf_path):
         super().__init__("lio_vicon_path_publisher")
         # Register `world` as a real TF root so RViz does not report that its
         # fixed frame is absent when this trajectory-only viewer is running.
@@ -97,6 +153,7 @@ class TrajectoryViewer(Node):
         world_tf.transform.rotation.w = 1.0
         self._static_tf.sendTransform(world_tf)
         self.max_poses = max_poses
+        self.pelvis_to_lidar = UrdfChain(urdf_path)
         self.save_dir = os.path.abspath(os.path.expanduser(save_dir)) if save_dir else None
         self.map_points = {"point_lio": [], "spark_fast_lio": []}
         self.vicon_origin = None
@@ -162,14 +219,7 @@ class TrajectoryViewer(Node):
             offset = VICON_OFFSET["translation"]
             p = tuple(p[i] + _rotate(q, offset)[i] for i in range(3))
 
-        # URDF chain: pelvis -> waist_yaw -> waist_roll -> torso_link.
-        p, q = _compose(p, q, (0.0, 0.0, 0.0), _axis_angle((0.0, 0.0, 1.0), self.joints.get("waist_yaw", 0.0)))
-        p, q = _compose(p, q, (-0.0039635, 0.0, 0.035), _axis_angle((1.0, 0.0, 0.0), self.joints.get("waist_roll", 0.0)))
-        p, q = _compose(p, q, (0.0, 0.0, 0.019), _axis_angle((0.0, 1.0, 0.0), self.joints.get("waist_pitch", 0.0)))
-
-        # Official G1 mount: torso -> mid360_link -> livox_frame.
-        p, q = _compose(p, q, (0.0002835, 0.00003, 0.41618), _axis_angle((0.0, 1.0, 0.0), 0.04014257279586953))
-        p, q = _compose(p, q, (0.0, 0.0, 0.0), _axis_angle((1.0, 0.0, 0.0), 3.141561))
+        p, q = self.pelvis_to_lidar.apply(p, q, self.joints)
         pose = Pose()
         pose.position.x, pose.position.y, pose.position.z = p
         pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
@@ -287,9 +337,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--max-poses", type=int, default=20000, help="maximum poses retained per path; 0 is unlimited")
     parser.add_argument("--save-dir", default="", help="write both accumulated world-frame maps here on shutdown")
+    parser.add_argument("--urdf", required=True, help="robot URDF containing the pelvis-to-mid360_link chain")
     args = parser.parse_args()
     rclpy.init()
-    node = TrajectoryViewer(args.max_poses, args.save_dir)
+    node = TrajectoryViewer(args.max_poses, args.save_dir, args.urdf)
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):

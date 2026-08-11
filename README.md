@@ -142,9 +142,10 @@ The view contains:
 - Spark FAST-LIO LiDAR trajectory and intensity-colored map.
 - Current LiDAR coordinate axes for all three estimates.
 
-Vicon is converted to the same physical `livox_frame` using the calibrated
-marker-to-pelvis rotation, live waist yaw/roll/pitch from `/joint_states`, the
-G1 waist/torso kinematic chain, and the official Mid-360 mount transform.
+Vicon is converted to the physical `mid360_link` using the calibrated
+marker-to-pelvis rotation, live joint values from `/joint_states`, and the
+pelvis-to-Mid-360 kinematic chain loaded directly from the robot URDF. The
+launch argument `urdf` defaults to `$G1_URDF` when set.
 
 ## Replay a recorded raw-DDS capture
 
