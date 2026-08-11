@@ -76,6 +76,7 @@ def main():
     reference = reference[np.argsort(reference[:, 0])]
     results = []
     aligned_for_plot = {}
+    raw_for_plot = {}
     for name in ("point_lio", "spark_fast_lio"):
         estimate = streams[name]
         if len(estimate) < 2:
@@ -100,6 +101,7 @@ def main():
             "max_m": float(error.max()),
         })
         aligned_for_plot[name] = aligned
+        raw_for_plot[name] = source
 
     metrics_path = os.path.join(args.out_dir, "ate_metrics.csv")
     with open(metrics_path, "w", newline="") as output:
@@ -107,9 +109,10 @@ def main():
         writer.writeheader()
         writer.writerows(results)
 
+    colors = {"point_lio": "#d62728", "spark_fast_lio": "#1f77b4"}
+
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.plot(reference[:, 1], reference[:, 2], color="black", linewidth=2, label="Vicon-derived LiDAR")
-    colors = {"point_lio": "#d62728", "spark_fast_lio": "#1f77b4"}
     for row in results:
         name = row["method"]
         points = aligned_for_plot[name]
@@ -125,7 +128,32 @@ def main():
     fig.tight_layout()
     bev_path = os.path.join(args.out_dir, "trajectory_bev_svd.png")
     fig.savefig(bev_path, dpi=180)
-    print(f"wrote {metrics_path}\nwrote {bev_path}")
+
+    # Same time-matched points, but plotted as recorded -- no additional
+    # trajectory-wide SVD fit on top. /viz/*_lidar_pose is already anchored
+    # to Vicon via the online launch's own first-common-pose alignment (see
+    # tools/lio_vicon_path_publisher.py), so this isn't each LIO's raw
+    # unaligned internal-odometry frame -- it shows whatever the SVD fit
+    # corrects *beyond* that one-time anchor: a low-frequency drift/offset
+    # the SVD-aligned plot's global best-fit could otherwise hide.
+    fig_raw, ax_raw = plt.subplots(figsize=(8, 8))
+    ax_raw.plot(reference[:, 1], reference[:, 2], color="black", linewidth=2, label="Vicon-derived LiDAR")
+    for name in ("point_lio", "spark_fast_lio"):
+        if name not in raw_for_plot:
+            continue
+        points = raw_for_plot[name]
+        ax_raw.plot(points[:, 0], points[:, 1], color=colors[name], linewidth=1.5, label=name)
+    ax_raw.set_aspect("equal", adjustable="box")
+    ax_raw.set_xlabel("world x (m)")
+    ax_raw.set_ylabel("world y (m)")
+    ax_raw.set_title("LiDAR trajectories, no trajectory-wide SVD fit (first-pose-anchored only)")
+    ax_raw.grid(True, alpha=0.3)
+    ax_raw.legend()
+    fig_raw.tight_layout()
+    bev_raw_path = os.path.join(args.out_dir, "trajectory_bev_raw.png")
+    fig_raw.savefig(bev_raw_path, dpi=180)
+
+    print(f"wrote {metrics_path}\nwrote {bev_path}\nwrote {bev_raw_path}")
 
 
 if __name__ == "__main__":

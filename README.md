@@ -124,6 +124,17 @@ Terminal 2, both LIOs and RViz:
 ros2 launch "$PWD/launch/lio_vicon_view.launch.py"
 ```
 
+This defaults to `lio:=all` and opens RViz with the Vicon trajectory/frame,
+both LIO trajectories/frames, and both intensity-colored maps. Select one LIO
+while keeping the same Vicon comparison and RViz view with:
+
+```bash
+ros2 launch "$PWD/launch/lio_vicon_view.launch.py" lio:=point-lio
+ros2 launch "$PWD/launch/lio_vicon_view.launch.py" lio:=fast-lio
+```
+
+Use `start_viewer:=false` for a headless run.
+
 The view contains:
 
 - Vicon-derived LiDAR trajectory (green).
@@ -242,3 +253,41 @@ results/run_01_videos/spark_fast_lio_bev.mp4
 The Vicon video contains its LiDAR-frame trajectory. Each LIO video contains
 its trajectory plus the intensity-colored point-cloud reconstruction accumulated
 up to that video frame. `--speed 2` renders a two-times-real-time summary.
+
+All three videos use one shared BEV extent and one shared timeline, so their
+frame counts and durations match exactly. A moving LiDAR coordinate frame is
+drawn at the current pose with a red X axis and green Y axis.
+
+## Reproduce the archived `walking` runs
+
+The archived `walking_bag` and `walking_2_bag` ROS bags contain Vicon, LiDAR,
+and LiDAR IMU, while the matching raw recording directories contain the
+recorded Unitree `lowstate.jsonl`. The processing helper replays both sources
+together so pelvis-to-LiDAR FK uses the real recorded waist joints:
+
+```bash
+./scripts/process_recording.sh \
+  ~/Downloads/recordings/walking \
+  ~/Downloads/recordings/walking_bag \
+  results/walking
+
+./scripts/process_recording.sh \
+  ~/Downloads/recordings/walking_2 \
+  ~/Downloads/recordings/walking_2_bag \
+  results/walking_2
+```
+
+Run them sequentially because each invocation starts fresh Point-LIO and
+Spark FAST-LIO processes. The script refuses to overwrite an existing output
+directory. Each result directory contains:
+
+```text
+trajectory_map_bag/             shared-world poses and registered scans
+maps/                           final Point-LIO and Spark FAST-LIO PCDs
+evaluation/ate_metrics.csv      rigid SVD-aligned ATE
+evaluation/trajectory_bev_svd.png
+videos/vicon_bev.mp4
+videos/point_lio_bev.mp4
+videos/spark_fast_lio_bev.mp4
+logs/                           launch, recording, and joint replay logs
+```
