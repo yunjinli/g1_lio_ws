@@ -2,6 +2,7 @@
 """Render three progressive BEV MP4s from a g1_lio_ws trajectory/map bag."""
 
 import argparse
+import math
 import os
 
 import matplotlib.pyplot as plt
@@ -38,7 +39,12 @@ def read_bag(uri, points_per_scan):
         if topic in POSE_TOPICS:
             msg = deserialize_message(serialized, PoseStamped)
             p = msg.pose.position
-            poses[POSE_TOPICS[topic]].append((t, p.x, p.y))
+            q = msg.pose.orientation
+            yaw = math.atan2(
+                2.0 * (q.w * q.z + q.x * q.y),
+                1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+            )
+            poses[POSE_TOPICS[topic]].append((t, p.x, p.y, yaw))
         elif topic in MAP_TOPICS:
             msg = deserialize_message(serialized, PointCloud2)
             points = np.asarray(point_cloud2.read_points_numpy(msg, field_names=["x", "y", "intensity"], skip_nans=True))
@@ -56,6 +62,7 @@ def read_bag(uri, points_per_scan):
 
 
 def limits(poses, scans):
+    """Shared square BEV bounds containing trajectories and reconstructed maps."""
     xy = [values[:, 1:3] for values in poses.values() if len(values)]
     xy += [scan[:, :2] for method in scans.values() for _, scan in method if len(scan)]
     all_xy = np.concatenate(xy)
@@ -65,11 +72,11 @@ def limits(poses, scans):
     return center[0] - radius, center[0] + radius, center[1] - radius, center[1] + radius
 
 
-def render(method, pose, scans, output, bounds, fps, speed, max_map_points):
+def render(method, pose, scans, output, bounds, timeline, fps, speed, max_map_points):
     if len(pose) < 2:
         print(f"warning: no trajectory for {method}; skipping {output}")
         return
-    start, end = pose[0, 0], pose[-1, 0]
+    start, end = timeline
     frame_times = np.arange(start, end + speed / fps, speed / fps)
     fig, ax = plt.subplots(figsize=(8, 8), facecolor="#111111")
     ax.set_facecolor("#111111")
@@ -83,6 +90,8 @@ def render(method, pose, scans, output, bounds, fps, speed, max_map_points):
     title = {"vicon": "Vicon-derived LiDAR", "point_lio": "Point-LIO + reconstruction", "spark_fast_lio": "Spark FAST-LIO + reconstruction"}[method]
     trajectory, = ax.plot([], [], color=colors[method], linewidth=2.5, zorder=3)
     current = ax.scatter([], [], c=colors[method], s=45, zorder=4)
+    frame_x, = ax.plot([], [], color="#ff3b30", linewidth=2.5, zorder=5, label="LiDAR X")
+    frame_y, = ax.plot([], [], color="#34c759", linewidth=2.5, zorder=5, label="LiDAR Y")
     cloud = ax.scatter([], [], c=[], cmap="viridis", s=0.35, alpha=0.35, edgecolors="none", zorder=1)
     time_text = ax.text(0.02, 0.98, "", transform=ax.transAxes, va="top", color="white")
     ax.set_title(title, color="white")
@@ -100,6 +109,13 @@ def render(method, pose, scans, output, bounds, fps, speed, max_map_points):
             trajectory.set_data(visible[:, 0], visible[:, 1])
             if len(visible):
                 current.set_offsets(visible[-1:])
+                x, y, yaw = pose[count - 1, 1:4]
+                axis_length = 0.08 * (bounds[1] - bounds[0])
+                frame_x.set_data([x, x + axis_length * np.cos(yaw)], [y, y + axis_length * np.sin(yaw)])
+                frame_y.set_data(
+                    [x, x - axis_length * np.sin(yaw)],
+                    [y, y + axis_length * np.cos(yaw)],
+                )
             while scan_index < len(scans) and scans[scan_index][0] <= frame_time:
                 accumulated.append(scans[scan_index][1])
                 scan_index += 1
@@ -127,13 +143,22 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     poses, scans = read_bag(args.bag, args.points_per_scan)
     bounds = limits(poses, scans)
+    populated = [pose for pose in poses.values() if len(pose)]
+    timeline = (
+        min(pose[0, 0] for pose in populated),
+        max(pose[-1, 0] for pose in populated),
+    )
     for method in ("vicon", "point_lio", "spark_fast_lio"):
+        if len(poses[method]) < 2:
+            print(f"warning: no trajectory for {method}")
+            continue
         render(
             method,
             poses[method],
             scans.get(method, []),
             os.path.join(args.out_dir, f"{method}_bev.mp4"),
             bounds,
+            timeline,
             args.fps,
             args.speed,
             args.max_map_points,
