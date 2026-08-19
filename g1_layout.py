@@ -179,51 +179,11 @@ HAND_TOUCH_AXIS_ORDER_OVERRIDE = {("l", "index_force_sensor_2"): (2, 1, 0)}
 # (sim/mujoco/body_bridge.py), so viz consumes one signal either way.
 VICON_PELVIS_TOPIC = "rt/vicon/pelvis"
 
-# Fixed correction for the "g1_pelvis" Vicon rigid body's own local axis
-# convention, which does NOT match the URDF's pelvis frame -- confirmed,
-# not assumed: it's defined in Vicon Tracker from 7 asymmetric markers with
-# no calibration against the robot's true mechanical pelvis frame, so there
-# was never a reason to expect the two to agree.
-#
-# Fit via Wahba's problem (SVD, same family as tools/lio evaluation's
-# Umeyama ATE alignment): for each sample, compare the Mid-360 LiDAR's own
-# onboard IMU accelerometer (gravity direction, measured directly at the
-# LiDAR) against what Vicon's reported pelvis orientation + this repo's own
-# FK (waist joints, from rt/lowstate) + the torso->livox_frame mount
-# transform (see viz.py's _lidar_mount_transform) predicts gravity should
-# be. 48 samples spread across the full recordings/my_session_2 crane-hang
-# capture -- the FULL chain matters here, not just the pelvis: an earlier
-# fit against rt/lowstate's own pelvis-local imu_state.accelerometer alone
-# (no FK/mount) got the pelvis-level residual down to 1.56 degrees, but
-# left 4-8 degrees of residual once carried through FK+mount to the LiDAR
-# itself -- i.e. there's a second, smaller error specific to the FK/mount
-# chain beyond the Vicon-pelvis-frame offset, and fitting against the
-# LiDAR's own IMU (this one) absorbs both into a single correction rather
-# than leaving the second one uncorrected. Residual after this fit: 1.21
-# degree mean (std 0.84, max 2.66) -- not noise (noise wouldn't hold this
-# tight across 48 samples spanning the full recording).
-#
-# Rotation-only for now: applied as corrected_R = R_vicon @ R(rotation_xyzw)
-# (local/right-composition -- this corrects the axis convention Vicon
-# Tracker assigned to the marker cluster, not a world-frame error, so it
-# composes on the right, not the left). translation is a placeholder
-# (0,0,0), not yet calibrated -- attempts to fit it from single-frame
-# point-cloud floor detection were too noisy to trust (std ~0.13m across
-# frames, including outliers), see the crane-recording ground-alignment
-# investigation for what was tried. Needs either a dedicated calibration
-# capture (feet flat on a known-level floor, read pelvis z directly) or a
-# proper accumulated-map plane fit (e.g. off point_lio/spark_fast_lio's own
-# registered output) rather than more single-frame guessing.
-#
-# Set to None once the Vicon rigid body itself is recalibrated in Vicon
-# Tracker to match the URDF's pelvis frame directly -- this correction
-# becomes unnecessary at that point, not just zero.
-# VICON_OFFSET = {
-#     "rotation_xyzw": (0.008109, -0.064441, 0.090102, 0.993812),
-#     "translation": (0.0, 0.0, 0.0),
-# }
-
-VICON_OFFSET = None
+# Vicon-pelvis calibration (VICON_OFFSET/IMU_IN_PELVIS) is applied once,
+# upstream, in ros2/mocap/vicon_bridge.py -- rt/vicon/pelvis (bridged into
+# this workspace's own /vicon/pelvis by bridge/unitree_ros2_bridge) already
+# carries an already-calibrated pelvis pose, so this workspace doesn't need
+# to know either constant exists. See that file's own docstring.
 
 # Mid-360 LiDAR point cloud, sensor_msgs/PointCloud2 (already vendored in
 # unitree_sdk2py). Confirmed against real hardware (2026-08-10, see
