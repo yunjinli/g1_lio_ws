@@ -28,8 +28,6 @@ from sensor_msgs.msg import JointState, PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
-from g1_layout import VICON_OFFSET
-
 
 def _quat_tuple(q):
     return (float(q.x), float(q.y), float(q.z), float(q.w))
@@ -211,14 +209,19 @@ class TrajectoryViewer(Node):
         self.joints.update(zip(msg.name, msg.position))
 
     def _vicon_lidar_pose(self, msg):
-        """Convert raw Vicon marker pose through pelvis/waist/torso to LiDAR."""
+        """Convert the (already-calibrated) Vicon pelvis pose through
+        pelvis/waist/torso to LiDAR.
+
+        /vicon/pelvis is calibrated upstream now -- ros2/mocap/vicon_bridge.py
+        applies VICON_OFFSET/IMU_IN_PELVIS once, at the single point raw
+        Vicon marker tracking first becomes a published pose, before it ever
+        reaches rt/vicon/pelvis (which this workspace's own DDS->ROS2 bridge
+        relays into /vicon/pelvis unchanged). Do not reapply either
+        correction here -- this used to, and it would now double-apply on
+        top of the upstream correction.
+        """
         p = _position(msg.pose.position)
         q = _normalize(_quat_tuple(msg.pose.orientation))
-        if VICON_OFFSET is not None:
-            q = _multiply(q, VICON_OFFSET["rotation_xyzw"])
-            offset = VICON_OFFSET["translation"]
-            p = tuple(p[i] + _rotate(q, offset)[i] for i in range(3))
-
         p, q = self.pelvis_to_lidar.apply(p, q, self.joints)
         pose = Pose()
         pose.position.x, pose.position.y, pose.position.z = p
